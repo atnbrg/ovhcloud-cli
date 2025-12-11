@@ -406,7 +406,6 @@ func (ms *MockSuite) TestCloudKubeNodepoolEditCmdWithAttachFloatingIpsFalse(asse
 
 	require.CmpNoError(err)
 	assert.Cmp(cleanWhitespacesHelper(out), `✅ Resource updated successfully`)
-
 }
 
 // Update a Nodepool with attachFloatingIps enabled without specify the flag
