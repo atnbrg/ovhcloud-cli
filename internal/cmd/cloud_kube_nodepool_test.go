@@ -576,5 +576,4 @@ func (ms *MockSuite) TestCloudKubeNodepoolEditCmdWithoutAttachFloatingIpsFalse(a
 
 	require.CmpNoError(err)
 	assert.Cmp(cleanWhitespacesHelper(out), `✅ Resource updated successfully`)
-
 }
