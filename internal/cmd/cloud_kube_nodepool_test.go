@@ -152,7 +152,7 @@ func (ms *MockSuite) TestCloudKubeNodepoolGetCmd(assert, require *td.T) {
 }
 
 // Create a Nodepool with the attachFloatingIps flag.
-// The nodepool spec must be set tp true.
+// The nodepool spec must be set to true.
 func (ms *MockSuite) TestCloudKubeNodepoolCreateCmdWithAttachFloatingIps(assert, require *td.T) {
 	httpmock.RegisterMatcherResponder(
 		http.MethodPost,
