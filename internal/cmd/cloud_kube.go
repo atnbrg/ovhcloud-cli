@@ -29,6 +29,7 @@ func initKubeCommand(cloudCmd *cobra.Command) {
 	}
 	kubeCmd.AddCommand(withFilterFlag(kubeListCmd))
 
+	// Command to get a Kubernetes cluster
 	kubeCmd.AddCommand(&cobra.Command{
 		Use:   "get <cluster_id>",
 		Short: "Get the given Kubernetes cluster",
@@ -36,8 +37,10 @@ func initKubeCommand(cloudCmd *cobra.Command) {
 		Args:  cobra.ExactArgs(1),
 	})
 
+	// Command to create a Kubernetes cluster
 	kubeCmd.AddCommand(getKubeCreateCmd())
 
+	// Command to edit a Kubernetes cluster
 	kubeEditCmd := &cobra.Command{
 		Use:   "edit <cluster_id>",
 		Short: "Edit the given Kubernetes cluster",
@@ -49,6 +52,7 @@ func initKubeCommand(cloudCmd *cobra.Command) {
 	kubeEditCmd.Flags().BoolVar(&flags.ParametersViaEditor, "editor", false, "Use a text editor to define edit parameters")
 	kubeCmd.AddCommand(kubeEditCmd)
 
+	// Command to delete a Kubernetes cluster
 	kubeCmd.AddCommand(&cobra.Command{
 		Use:   "delete <cluster_id>",
 		Short: "Delete the given Kubernetes cluster",
@@ -56,6 +60,7 @@ func initKubeCommand(cloudCmd *cobra.Command) {
 		Args:  cobra.ExactArgs(1),
 	})
 
+	// Command to manage Kubernetes cluster customizations
 	customizationCmd := &cobra.Command{
 		Use:   "customization",
 		Short: "Manage Kubernetes cluster customizations",
@@ -331,6 +336,25 @@ There are three ways to define the creation parameters:
 		Run: cloud.CreateKube,
 	}
 
+	// Pre-allocate pointer structs so flags can bind to their fields
+	cloud.KubeSpec.IPAllocationPolicy = &cloud.IPAllocationPolicy{}
+	cloud.KubeSpec.Customization.Cilium = &cloud.Cilium{}
+	cloud.KubeSpec.Customization.Cilium.Hubble = &cloud.Hubble{}
+	cloud.KubeSpec.Customization.Cilium.Hubble.Relay = &cloud.HubbleRelay{}
+	cloud.KubeSpec.Customization.Cilium.Hubble.UI = &cloud.HubbleUI{}
+	cloud.KubeSpec.Customization.Cilium.ClusterMesh = &cloud.ClusterMesh{}
+	cloud.KubeSpec.Customization.Cilium.ClusterMesh.APIServer = &cloud.ClusterMeshAPIServer{}
+
+	// Local variables for pointer-backed flags
+	var (
+		createCiliumClusterID           uint8
+		createCiliumHubbleEnabled       bool
+		createCiliumHubbleRelayEnabled  bool
+		createCiliumHubbleUIEnabled     bool
+		createCiliumClusterMeshEnabled  bool
+		createCiliumClusterMeshNodePort uint16
+	)
+
 	// All flags for Kubernetes cluster creation
 	kubeCreateCmd.Flags().StringVar(&cloud.KubeSpec.Name, "name", "", "Name of the Kubernetes cluster")
 	kubeCreateCmd.Flags().StringVar(&cloud.KubeSpec.Region, "region", "", "Region for the Kubernetes cluster")
@@ -341,6 +365,90 @@ There are three ways to define the creation parameters:
 	kubeCreateCmd.Flags().StringVar(&cloud.KubeSpec.NodesSubnetId, "nodes-subnet-id", "", "OpenStack subnet ID that the cluster nodes will use")
 	kubeCreateCmd.Flags().StringVar(&cloud.KubeSpec.PrivateNetworkId, "private-network-id", "", "OpenStack private network ID that the cluster will use")
 	kubeCreateCmd.Flags().StringVar(&cloud.KubeSpec.UpdatePolicy, "update-policy", "", "Update policy for the cluster (ALWAYS_UPDATE, MINIMAL_DOWNTIME, NEVER_UPDATE)")
+
+	// CIDR configuration
+	kubeCreateCmd.Flags().StringVar(&cloud.KubeSpec.IPAllocationPolicy.PodsIPv4CIDR, "ip-allocation-policy-pods-ipv4-cidr", "", "IPv4 CIDR for pods")
+	kubeCreateCmd.Flags().StringVar(&cloud.KubeSpec.IPAllocationPolicy.ServicesIPv4CIDR, "ip-allocation-policy-services-ipv4-cidr", "", "IPv4 CIDR for services")
+
+	// Cilium configuration
+	kubeCreateCmd.Flags().Uint8Var(&createCiliumClusterID, "cilium-cluster-id", 0, "Cilium cluster ID")
+	kubeCreateCmd.Flags().BoolVar(&createCiliumHubbleEnabled, "cilium-hubble-enabled", false, "Enable Hubble observability")
+	kubeCreateCmd.Flags().BoolVar(&createCiliumHubbleRelayEnabled, "cilium-hubble-relay-enabled", false, "Enable Hubble Relay")
+	kubeCreateCmd.Flags().BoolVar(&createCiliumHubbleUIEnabled, "cilium-hubble-ui-enabled", false, "Enable Hubble UI")
+	kubeCreateCmd.Flags().BoolVar(&createCiliumClusterMeshEnabled, "cilium-cluster-mesh-enabled", false, "Enable Cilium ClusterMesh")
+	kubeCreateCmd.Flags().StringVar(&cloud.KubeSpec.Customization.Cilium.ClusterMesh.APIServer.ServiceType, "cilium-cluster-mesh-apiserver-service-type", "", "ClusterMesh API server service type")
+	kubeCreateCmd.Flags().Uint16Var(&createCiliumClusterMeshNodePort, "cilium-cluster-mesh-apiserver-node-port", 0, "ClusterMesh API server node port")
+
+	// Handle optional pointer-backed flags: only assign if explicitly set, otherwise nil-out
+	kubeCreateCmd.PreRunE = func(cmd *cobra.Command, args []string) error {
+		// IPAllocationPolicy
+		if !cmd.Flags().Changed("ip-allocation-policy-pods-ipv4-cidr") && !cmd.Flags().Changed("ip-allocation-policy-services-ipv4-cidr") {
+			cloud.KubeSpec.IPAllocationPolicy = nil
+		}
+
+		// Cilium
+		anyCiliumFlag := cmd.Flags().Changed("cilium-cluster-id") ||
+			cmd.Flags().Changed("cilium-hubble-enabled") ||
+			cmd.Flags().Changed("cilium-hubble-relay-enabled") ||
+			cmd.Flags().Changed("cilium-hubble-ui-enabled") ||
+			cmd.Flags().Changed("cilium-cluster-mesh-enabled") ||
+			cmd.Flags().Changed("cilium-cluster-mesh-apiserver-service-type") ||
+			cmd.Flags().Changed("cilium-cluster-mesh-apiserver-node-port")
+
+		if !anyCiliumFlag {
+			cloud.KubeSpec.Customization.Cilium = nil
+			return nil
+		}
+
+		if cmd.Flags().Changed("cilium-cluster-id") {
+			cloud.KubeSpec.Customization.Cilium.ClusterID = &createCiliumClusterID
+		}
+
+		// Hubble
+		anyHubbleFlag := cmd.Flags().Changed("cilium-hubble-enabled") ||
+			cmd.Flags().Changed("cilium-hubble-relay-enabled") ||
+			cmd.Flags().Changed("cilium-hubble-ui-enabled")
+		if !anyHubbleFlag {
+			cloud.KubeSpec.Customization.Cilium.Hubble = nil
+		} else {
+			if cmd.Flags().Changed("cilium-hubble-enabled") {
+				cloud.KubeSpec.Customization.Cilium.Hubble.Enabled = &createCiliumHubbleEnabled
+			}
+			if cmd.Flags().Changed("cilium-hubble-relay-enabled") {
+				cloud.KubeSpec.Customization.Cilium.Hubble.Relay.Enabled = &createCiliumHubbleRelayEnabled
+			} else {
+				cloud.KubeSpec.Customization.Cilium.Hubble.Relay = nil
+			}
+			if cmd.Flags().Changed("cilium-hubble-ui-enabled") {
+				cloud.KubeSpec.Customization.Cilium.Hubble.UI.Enabled = &createCiliumHubbleUIEnabled
+			} else {
+				cloud.KubeSpec.Customization.Cilium.Hubble.UI = nil
+			}
+		}
+
+		// ClusterMesh
+		anyClusterMeshFlag := cmd.Flags().Changed("cilium-cluster-mesh-enabled") ||
+			cmd.Flags().Changed("cilium-cluster-mesh-apiserver-service-type") ||
+			cmd.Flags().Changed("cilium-cluster-mesh-apiserver-node-port")
+		if !anyClusterMeshFlag {
+			cloud.KubeSpec.Customization.Cilium.ClusterMesh = nil
+		} else {
+			if cmd.Flags().Changed("cilium-cluster-mesh-enabled") {
+				cloud.KubeSpec.Customization.Cilium.ClusterMesh.Enabled = &createCiliumClusterMeshEnabled
+			}
+			anyAPIServerFlag := cmd.Flags().Changed("cilium-cluster-mesh-apiserver-service-type") ||
+				cmd.Flags().Changed("cilium-cluster-mesh-apiserver-node-port")
+			if !anyAPIServerFlag {
+				cloud.KubeSpec.Customization.Cilium.ClusterMesh.APIServer = nil
+			} else {
+				if cmd.Flags().Changed("cilium-cluster-mesh-apiserver-node-port") {
+					cloud.KubeSpec.Customization.Cilium.ClusterMesh.APIServer.NodePort = createCiliumClusterMeshNodePort
+				}
+			}
+		}
+
+		return nil
+	}
 
 	// Private network configuration
 	kubeCreateCmd.Flags().StringVar(&cloud.KubeSpec.PrivateNetworkConfiguration.DefaultVrackGateway, "private-network.default-vrack-gateway", "", "If defined, all egress traffic will be routed towards this IP address, which should belong to the private network")
@@ -418,6 +526,25 @@ There are three ways to define the reset parameters:
 		Args: cobra.ExactArgs(1),
 	}
 
+	// Pre-allocate pointer structs so flags can bind to their fields
+	cloud.KubeSpec.IPAllocationPolicy = &cloud.IPAllocationPolicy{}
+	cloud.KubeSpec.Customization.Cilium = &cloud.Cilium{}
+	cloud.KubeSpec.Customization.Cilium.Hubble = &cloud.Hubble{}
+	cloud.KubeSpec.Customization.Cilium.Hubble.Relay = &cloud.HubbleRelay{}
+	cloud.KubeSpec.Customization.Cilium.Hubble.UI = &cloud.HubbleUI{}
+	cloud.KubeSpec.Customization.Cilium.ClusterMesh = &cloud.ClusterMesh{}
+	cloud.KubeSpec.Customization.Cilium.ClusterMesh.APIServer = &cloud.ClusterMeshAPIServer{}
+
+	// Local variables for pointer-backed flags
+	var (
+		resetCiliumClusterID           uint8
+		resetCiliumHubbleEnabled       bool
+		resetCiliumHubbleRelayEnabled  bool
+		resetCiliumHubbleUIEnabled     bool
+		resetCiliumClusterMeshEnabled  bool
+		resetCiliumClusterMeshNodePort uint16
+	)
+
 	// All flags for Kubernetes cluster reset
 	kubeResetCmd.Flags().StringVar(&cloud.KubeSpec.Name, "name", "", "Name of the Kubernetes cluster")
 	kubeResetCmd.Flags().StringVar(&cloud.KubeSpec.Version, "version", "", "Kubernetes version")
@@ -427,6 +554,90 @@ There are three ways to define the reset parameters:
 	kubeResetCmd.Flags().StringVar(&cloud.KubeSpec.PrivateNetworkId, "private-network-id", "", "OpenStack private network ID that the cluster will use")
 	kubeResetCmd.Flags().StringVar(&cloud.KubeSpec.UpdatePolicy, "update-policy", "", "Update policy for the cluster (ALWAYS_UPDATE, MINIMAL_DOWNTIME, NEVER_UPDATE)")
 	kubeResetCmd.Flags().StringVar(&cloud.KubeSpec.WorkerNodesPolicy, "worker-nodes-policy", "", "Worker nodes reset policy (delete, reinstall)")
+
+	// CIDR configuration
+	kubeResetCmd.Flags().StringVar(&cloud.KubeSpec.IPAllocationPolicy.PodsIPv4CIDR, "ip-allocation-policy-pods-ipv4-cidr", "", "IPv4 CIDR for pods")
+	kubeResetCmd.Flags().StringVar(&cloud.KubeSpec.IPAllocationPolicy.ServicesIPv4CIDR, "ip-allocation-policy-services-ipv4-cidr", "", "IPv4 CIDR for services")
+
+	// Cilium configuration
+	kubeResetCmd.Flags().Uint8Var(&resetCiliumClusterID, "cilium-cluster-id", 0, "Cilium cluster ID")
+	kubeResetCmd.Flags().BoolVar(&resetCiliumHubbleEnabled, "cilium-hubble-enabled", false, "Enable Hubble observability")
+	kubeResetCmd.Flags().BoolVar(&resetCiliumHubbleRelayEnabled, "cilium-hubble-relay-enabled", false, "Enable Hubble Relay")
+	kubeResetCmd.Flags().BoolVar(&resetCiliumHubbleUIEnabled, "cilium-hubble-ui-enabled", false, "Enable Hubble UI")
+	kubeResetCmd.Flags().BoolVar(&resetCiliumClusterMeshEnabled, "cilium-cluster-mesh-enabled", false, "Enable Cilium ClusterMesh")
+	kubeResetCmd.Flags().StringVar(&cloud.KubeSpec.Customization.Cilium.ClusterMesh.APIServer.ServiceType, "cilium-cluster-mesh-apiserver-service-type", "", "ClusterMesh API server service type")
+	kubeResetCmd.Flags().Uint16Var(&resetCiliumClusterMeshNodePort, "cilium-cluster-mesh-apiserver-node-port", 0, "ClusterMesh API server node port")
+
+	// Handle optional pointer-backed flags: only assign if explicitly set, otherwise nil-out
+	kubeResetCmd.PreRunE = func(cmd *cobra.Command, args []string) error {
+		// IPAllocationPolicy
+		if !cmd.Flags().Changed("ip-allocation-policy-pods-ipv4-cidr") && !cmd.Flags().Changed("ip-allocation-policy-services-ipv4-cidr") {
+			cloud.KubeSpec.IPAllocationPolicy = nil
+		}
+
+		// Cilium
+		anyCiliumFlag := cmd.Flags().Changed("cilium-cluster-id") ||
+			cmd.Flags().Changed("cilium-hubble-enabled") ||
+			cmd.Flags().Changed("cilium-hubble-relay-enabled") ||
+			cmd.Flags().Changed("cilium-hubble-ui-enabled") ||
+			cmd.Flags().Changed("cilium-cluster-mesh-enabled") ||
+			cmd.Flags().Changed("cilium-cluster-mesh-apiserver-service-type") ||
+			cmd.Flags().Changed("cilium-cluster-mesh-apiserver-node-port")
+
+		if !anyCiliumFlag {
+			cloud.KubeSpec.Customization.Cilium = nil
+			return nil
+		}
+
+		if cmd.Flags().Changed("cilium-cluster-id") {
+			cloud.KubeSpec.Customization.Cilium.ClusterID = &resetCiliumClusterID
+		}
+
+		// Hubble
+		anyHubbleFlag := cmd.Flags().Changed("cilium-hubble-enabled") ||
+			cmd.Flags().Changed("cilium-hubble-relay-enabled") ||
+			cmd.Flags().Changed("cilium-hubble-ui-enabled")
+		if !anyHubbleFlag {
+			cloud.KubeSpec.Customization.Cilium.Hubble = nil
+		} else {
+			if cmd.Flags().Changed("cilium-hubble-enabled") {
+				cloud.KubeSpec.Customization.Cilium.Hubble.Enabled = &resetCiliumHubbleEnabled
+			}
+			if cmd.Flags().Changed("cilium-hubble-relay-enabled") {
+				cloud.KubeSpec.Customization.Cilium.Hubble.Relay.Enabled = &resetCiliumHubbleRelayEnabled
+			} else {
+				cloud.KubeSpec.Customization.Cilium.Hubble.Relay = nil
+			}
+			if cmd.Flags().Changed("cilium-hubble-ui-enabled") {
+				cloud.KubeSpec.Customization.Cilium.Hubble.UI.Enabled = &resetCiliumHubbleUIEnabled
+			} else {
+				cloud.KubeSpec.Customization.Cilium.Hubble.UI = nil
+			}
+		}
+
+		// ClusterMesh
+		anyClusterMeshFlag := cmd.Flags().Changed("cilium-cluster-mesh-enabled") ||
+			cmd.Flags().Changed("cilium-cluster-mesh-apiserver-service-type") ||
+			cmd.Flags().Changed("cilium-cluster-mesh-apiserver-node-port")
+		if !anyClusterMeshFlag {
+			cloud.KubeSpec.Customization.Cilium.ClusterMesh = nil
+		} else {
+			if cmd.Flags().Changed("cilium-cluster-mesh-enabled") {
+				cloud.KubeSpec.Customization.Cilium.ClusterMesh.Enabled = &resetCiliumClusterMeshEnabled
+			}
+			anyAPIServerFlag := cmd.Flags().Changed("cilium-cluster-mesh-apiserver-service-type") ||
+				cmd.Flags().Changed("cilium-cluster-mesh-apiserver-node-port")
+			if !anyAPIServerFlag {
+				cloud.KubeSpec.Customization.Cilium.ClusterMesh.APIServer = nil
+			} else {
+				if cmd.Flags().Changed("cilium-cluster-mesh-apiserver-node-port") {
+					cloud.KubeSpec.Customization.Cilium.ClusterMesh.APIServer.NodePort = resetCiliumClusterMeshNodePort
+				}
+			}
+		}
+
+		return nil
+	}
 
 	// Private network configuration
 	kubeResetCmd.Flags().StringVar(&cloud.KubeSpec.PrivateNetworkConfiguration.DefaultVrackGateway, "private-network.default-vrack-gateway", "", "If defined, all egress traffic will be routed towards this IP address, which should belong to the private network")
