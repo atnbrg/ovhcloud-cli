@@ -49,6 +49,21 @@ ovhcloud cloud kube create [flags]
 ### Options
 
 ```
+      --cilium-cluster-id uint8                                       Cilium cluster ID (1 to 255) (default 1)
+      --cilium-cluster-mesh-apiserver-node-port uint16                ClusterMesh API server node port
+      --cilium-cluster-mesh-apiserver-service-type string             ClusterMesh API server service type
+      --cilium-cluster-mesh-enabled                                   Enable Cilium ClusterMesh
+      --cilium-hubble-enabled                                         Enable Hubble observability
+      --cilium-hubble-relay-enabled                                   Enable Hubble Relay
+      --cilium-hubble-ui-backend-limits-cpu string                    Hubble UI backend CPU limit (e.g. '500m')
+      --cilium-hubble-ui-backend-limits-memory string                 Hubble UI backend memory limit (e.g. '256Mi')
+      --cilium-hubble-ui-backend-requests-cpu string                  Hubble UI backend CPU request (e.g. '100m')
+      --cilium-hubble-ui-backend-requests-memory string               Hubble UI backend memory request (e.g. '128Mi')
+      --cilium-hubble-ui-enabled                                      Enable Hubble UI
+      --cilium-hubble-ui-frontend-limits-cpu string                   Hubble UI frontend CPU limit (e.g. '500m')
+      --cilium-hubble-ui-frontend-limits-memory string                Hubble UI frontend memory limit (e.g. '256Mi')
+      --cilium-hubble-ui-frontend-requests-cpu string                 Hubble UI frontend CPU request (e.g. '100m')
+      --cilium-hubble-ui-frontend-requests-memory string              Hubble UI frontend memory request (e.g. '128Mi')
       --customization.api-server.admission-plugins.disabled strings   Admission plugins to disable on API server (AlwaysPullImages, NodeRestriction)
       --customization.api-server.admission-plugins.enabled strings    Admission plugins to enable on API server (AlwaysPullImages, NodeRestriction)
       --customization.kube-proxy.iptables.min-sync-period string      Minimum period that iptables rules are refreshed, in RFC3339 duration format (e.g. 'PT60S')
@@ -63,6 +78,8 @@ ovhcloud cloud kube create [flags]
       --from-file string                                              File containing parameters
   -h, --help                                                          help for create
       --init-file string                                              Create a file with example parameters
+      --ip-allocation-policy-pods-ipv4-cidr string                    IPv4 CIDR for pods
+      --ip-allocation-policy-services-ipv4-cidr string                IPv4 CIDR for services
       --kube-proxy-mode string                                        Kube-proxy mode (iptables or ipvs)
       --load-balancers-subnet-id string                               OpenStack subnet ID that the load balancers will use
       --name string                                                   Name of the Kubernetes cluster
