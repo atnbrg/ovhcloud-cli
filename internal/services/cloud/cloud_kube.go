@@ -20,6 +20,7 @@ import (
 	httpLib "github.com/ovh/ovhcloud-cli/internal/http"
 	"github.com/ovh/ovhcloud-cli/internal/services/common"
 	"github.com/spf13/cobra"
+	v1 "k8s.io/api/core/v1"
 )
 
 var (
@@ -75,6 +76,7 @@ var (
 					UDPTimeout    string `json:"udpTimeout,omitempty"`
 				} `json:"ipvs,omitzero"`
 			} `json:"kubeProxy,omitzero"`
+			Cilium *Cilium `json:"cilium,omitempty"`
 		} `json:"customization,omitzero"`
 		KubeProxyMode               string `json:"kubeProxyMode,omitempty"`
 		LoadBalancersSubnetId       string `json:"loadBalancersSubnetId,omitempty"`
@@ -84,12 +86,13 @@ var (
 			DefaultVrackGateway            string `json:"defaultVrackGateway,omitempty"`
 			PrivateNetworkRoutingAsDefault bool   `json:"privateNetworkRoutingAsDefault,omitempty"`
 		} `json:"privateNetworkConfiguration,omitzero"`
-		PrivateNetworkId  string `json:"privateNetworkId,omitempty"`
-		Region            string `json:"region,omitempty"`
-		UpdatePolicy      string `json:"updatePolicy,omitempty"`
-		Version           string `json:"version,omitempty"`
-		WorkerNodesPolicy string `json:"workerNodesPolicy,omitempty"`
-		Plan              string `json:"plan,omitempty"`
+		PrivateNetworkId   string              `json:"privateNetworkId,omitempty"`
+		Region             string              `json:"region,omitempty"`
+		UpdatePolicy       string              `json:"updatePolicy,omitempty"`
+		Version            string              `json:"version,omitempty"`
+		WorkerNodesPolicy  string              `json:"workerNodesPolicy,omitempty"`
+		Plan               string              `json:"plan,omitempty"`
+		IPAllocationPolicy *IPAllocationPolicy `json:"ipAllocationPolicy,omitempty"`
 	}
 
 	// KubeNodepoolSpec defines the structure for a Kubernetes node pool specification
@@ -120,6 +123,43 @@ var (
 	// It is set by a command line flag
 	KubeIPRestrictions []string
 )
+
+type IPAllocationPolicy struct {
+	PodsIPv4CIDR     string `json:"podsIpv4Cidr"`
+	ServicesIPv4CIDR string `json:"servicesIpv4Cidr"`
+}
+
+type Cilium struct {
+	ClusterID   *uint8       `json:"clusterId,omitempty"`
+	Hubble      *Hubble      `json:"hubble,omitempty"`
+	ClusterMesh *ClusterMesh `json:"clusterMesh,omitempty"`
+}
+
+type ClusterMesh struct {
+	Enabled   *bool                 `json:"enabled,omitempty"`
+	APIServer *ClusterMeshAPIServer `json:"apiserver,omitempty"`
+}
+
+type ClusterMeshAPIServer struct {
+	ServiceType string `json:"serviceType,omitempty"`
+	NodePort    uint16 `json:"nodePort,omitempty"`
+}
+
+type Hubble struct {
+	Enabled *bool        `json:"enabled"`
+	Relay   *HubbleRelay `json:"relay,omitempty"`
+	UI      *HubbleUI    `json:"ui,omitempty"`
+}
+
+type HubbleRelay struct {
+	Enabled *bool `json:"enabled"`
+}
+
+type HubbleUI struct {
+	Enabled           *bool                    `json:"enabled"`
+	FrontendResources *v1.ResourceRequirements `json:"frontendResources,omitempty"`
+	BackendResources  *v1.ResourceRequirements `json:"backendResources,omitempty"`
+}
 
 type kubeNodepoolSpec struct {
 	AntiAffinity bool `json:"antiAffinity,omitempty"`

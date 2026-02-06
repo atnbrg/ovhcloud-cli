@@ -5,12 +5,15 @@
 package cmd
 
 import (
+	"fmt"
 	"runtime"
 
 	"github.com/ovh/ovhcloud-cli/internal/assets"
 	"github.com/ovh/ovhcloud-cli/internal/flags"
 	"github.com/ovh/ovhcloud-cli/internal/services/cloud"
 	"github.com/spf13/cobra"
+	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 )
 
 func initKubeCommand(cloudCmd *cobra.Command) {
@@ -29,6 +32,7 @@ func initKubeCommand(cloudCmd *cobra.Command) {
 	}
 	kubeCmd.AddCommand(withFilterFlag(kubeListCmd))
 
+	// Command to get a Kubernetes cluster
 	kubeCmd.AddCommand(&cobra.Command{
 		Use:   "get <cluster_id>",
 		Short: "Get the given Kubernetes cluster",
@@ -36,8 +40,10 @@ func initKubeCommand(cloudCmd *cobra.Command) {
 		Args:  cobra.ExactArgs(1),
 	})
 
+	// Command to create a Kubernetes cluster
 	kubeCmd.AddCommand(getKubeCreateCmd())
 
+	// Command to edit a Kubernetes cluster
 	kubeEditCmd := &cobra.Command{
 		Use:   "edit <cluster_id>",
 		Short: "Edit the given Kubernetes cluster",
@@ -49,6 +55,7 @@ func initKubeCommand(cloudCmd *cobra.Command) {
 	kubeEditCmd.Flags().BoolVar(&flags.ParametersViaEditor, "editor", false, "Use a text editor to define edit parameters")
 	kubeCmd.AddCommand(kubeEditCmd)
 
+	// Command to delete a Kubernetes cluster
 	kubeCmd.AddCommand(&cobra.Command{
 		Use:   "delete <cluster_id>",
 		Short: "Delete the given Kubernetes cluster",
@@ -56,6 +63,7 @@ func initKubeCommand(cloudCmd *cobra.Command) {
 		Args:  cobra.ExactArgs(1),
 	})
 
+	// Command to manage Kubernetes cluster customizations
 	customizationCmd := &cobra.Command{
 		Use:   "customization",
 		Short: "Manage Kubernetes cluster customizations",
@@ -331,6 +339,8 @@ There are three ways to define the creation parameters:
 		Run: cloud.CreateKube,
 	}
 
+	var createFlagValues kubeFlagValues
+
 	// All flags for Kubernetes cluster creation
 	kubeCreateCmd.Flags().StringVar(&cloud.KubeSpec.Name, "name", "", "Name of the Kubernetes cluster")
 	kubeCreateCmd.Flags().StringVar(&cloud.KubeSpec.Region, "region", "", "Region for the Kubernetes cluster")
@@ -341,6 +351,31 @@ There are three ways to define the creation parameters:
 	kubeCreateCmd.Flags().StringVar(&cloud.KubeSpec.NodesSubnetId, "nodes-subnet-id", "", "OpenStack subnet ID that the cluster nodes will use")
 	kubeCreateCmd.Flags().StringVar(&cloud.KubeSpec.PrivateNetworkId, "private-network-id", "", "OpenStack private network ID that the cluster will use")
 	kubeCreateCmd.Flags().StringVar(&cloud.KubeSpec.UpdatePolicy, "update-policy", "", "Update policy for the cluster (ALWAYS_UPDATE, MINIMAL_DOWNTIME, NEVER_UPDATE)")
+
+	// CIDR configuration
+	kubeCreateCmd.Flags().StringVar(&createFlagValues.PodsIPv4CIDR, "ip-allocation-policy-pods-ipv4-cidr", "", "IPv4 CIDR for pods")
+	kubeCreateCmd.Flags().StringVar(&createFlagValues.ServicesIPv4CIDR, "ip-allocation-policy-services-ipv4-cidr", "", "IPv4 CIDR for services")
+
+	// Cilium configuration
+	kubeCreateCmd.Flags().Uint8Var(&createFlagValues.CiliumClusterID, "cilium-cluster-id", 1, "Cilium cluster ID (1 to 255)")
+	kubeCreateCmd.Flags().BoolVar(&createFlagValues.CiliumHubbleEnabled, "cilium-hubble-enabled", false, "Enable Hubble observability")
+	kubeCreateCmd.Flags().BoolVar(&createFlagValues.CiliumHubbleRelayEnabled, "cilium-hubble-relay-enabled", false, "Enable Hubble Relay")
+	kubeCreateCmd.Flags().BoolVar(&createFlagValues.CiliumHubbleUIEnabled, "cilium-hubble-ui-enabled", false, "Enable Hubble UI")
+	kubeCreateCmd.Flags().BoolVar(&createFlagValues.CiliumClusterMeshEnabled, "cilium-cluster-mesh-enabled", false, "Enable Cilium ClusterMesh")
+	kubeCreateCmd.Flags().StringVar(&createFlagValues.CiliumClusterMeshServiceType, "cilium-cluster-mesh-apiserver-service-type", "", "ClusterMesh API server service type")
+	kubeCreateCmd.Flags().Uint16Var(&createFlagValues.CiliumClusterMeshNodePort, "cilium-cluster-mesh-apiserver-node-port", 0, "ClusterMesh API server node port")
+
+	// Hubble UI frontend resources
+	kubeCreateCmd.Flags().StringVar(&createFlagValues.FrontendResourcesLimitsCPU, "cilium-hubble-ui-frontend-limits-cpu", "", "Hubble UI frontend CPU limit (e.g. '500m')")
+	kubeCreateCmd.Flags().StringVar(&createFlagValues.FrontendResourcesLimitsMemory, "cilium-hubble-ui-frontend-limits-memory", "", "Hubble UI frontend memory limit (e.g. '256Mi')")
+	kubeCreateCmd.Flags().StringVar(&createFlagValues.FrontendResourcesRequestsCPU, "cilium-hubble-ui-frontend-requests-cpu", "", "Hubble UI frontend CPU request (e.g. '100m')")
+	kubeCreateCmd.Flags().StringVar(&createFlagValues.FrontendResourcesRequestsMemory, "cilium-hubble-ui-frontend-requests-memory", "", "Hubble UI frontend memory request (e.g. '128Mi')")
+
+	// Hubble UI backend resources
+	kubeCreateCmd.Flags().StringVar(&createFlagValues.BackendResourcesLimitsCPU, "cilium-hubble-ui-backend-limits-cpu", "", "Hubble UI backend CPU limit (e.g. '500m')")
+	kubeCreateCmd.Flags().StringVar(&createFlagValues.BackendResourcesLimitsMemory, "cilium-hubble-ui-backend-limits-memory", "", "Hubble UI backend memory limit (e.g. '256Mi')")
+	kubeCreateCmd.Flags().StringVar(&createFlagValues.BackendResourcesRequestsCPU, "cilium-hubble-ui-backend-requests-cpu", "", "Hubble UI backend CPU request (e.g. '100m')")
+	kubeCreateCmd.Flags().StringVar(&createFlagValues.BackendResourcesRequestsMemory, "cilium-hubble-ui-backend-requests-memory", "", "Hubble UI backend memory request (e.g. '128Mi')")
 
 	// Private network configuration
 	kubeCreateCmd.Flags().StringVar(&cloud.KubeSpec.PrivateNetworkConfiguration.DefaultVrackGateway, "private-network.default-vrack-gateway", "", "If defined, all egress traffic will be routed towards this IP address, which should belong to the private network")
@@ -361,6 +396,11 @@ There are three ways to define the creation parameters:
 	kubeCreateCmd.Flags().StringVar(&cloud.KubeSpec.Customization.KubeProxy.IPVS.TCPFinTimeout, "customization.kube-proxy.ipvs.tcp-fin-timeout", "", "Timeout value used for IPVS TCP sessions after receiving a FIN in RFC3339 duration format (e.g. 'PT60S')")
 	kubeCreateCmd.Flags().StringVar(&cloud.KubeSpec.Customization.KubeProxy.IPVS.TCPTimeout, "customization.kube-proxy.ipvs.tcp-timeout", "", "Timeout value used for idle IPVS TCP sessions in RFC3339 duration format (e.g. 'PT60S')")
 	kubeCreateCmd.Flags().StringVar(&cloud.KubeSpec.Customization.KubeProxy.IPVS.UDPTimeout, "customization.kube-proxy.ipvs.udp-timeout", "", "Timeout value used for IPVS UDP packets in RFC3339 duration format (e.g. 'PT60S')")
+
+	// Handle optional pointer-backed flags: only assign if explicitly set, otherwise nil-out
+	kubeCreateCmd.PreRunE = func(cmd *cobra.Command, args []string) error {
+		return kubePreRunE(cmd, &createFlagValues)
+	}
 
 	// Common flags for other means to define parameters
 	addInitParameterFileFlag(kubeCreateCmd, assets.CloudOpenapiSchema, "/cloud/project/{serviceName}/kube", "post", cloud.CloudKubeCreationExample, nil)
@@ -418,6 +458,8 @@ There are three ways to define the reset parameters:
 		Args: cobra.ExactArgs(1),
 	}
 
+	var resetFlagValues kubeFlagValues
+
 	// All flags for Kubernetes cluster reset
 	kubeResetCmd.Flags().StringVar(&cloud.KubeSpec.Name, "name", "", "Name of the Kubernetes cluster")
 	kubeResetCmd.Flags().StringVar(&cloud.KubeSpec.Version, "version", "", "Kubernetes version")
@@ -427,6 +469,31 @@ There are three ways to define the reset parameters:
 	kubeResetCmd.Flags().StringVar(&cloud.KubeSpec.PrivateNetworkId, "private-network-id", "", "OpenStack private network ID that the cluster will use")
 	kubeResetCmd.Flags().StringVar(&cloud.KubeSpec.UpdatePolicy, "update-policy", "", "Update policy for the cluster (ALWAYS_UPDATE, MINIMAL_DOWNTIME, NEVER_UPDATE)")
 	kubeResetCmd.Flags().StringVar(&cloud.KubeSpec.WorkerNodesPolicy, "worker-nodes-policy", "", "Worker nodes reset policy (delete, reinstall)")
+
+	// CIDR configuration
+	kubeResetCmd.Flags().StringVar(&resetFlagValues.PodsIPv4CIDR, "ip-allocation-policy-pods-ipv4-cidr", "", "IPv4 CIDR for pods")
+	kubeResetCmd.Flags().StringVar(&resetFlagValues.ServicesIPv4CIDR, "ip-allocation-policy-services-ipv4-cidr", "", "IPv4 CIDR for services")
+
+	// Cilium configuration
+	kubeResetCmd.Flags().Uint8Var(&resetFlagValues.CiliumClusterID, "cilium-cluster-id", 0, "Cilium cluster ID")
+	kubeResetCmd.Flags().BoolVar(&resetFlagValues.CiliumHubbleEnabled, "cilium-hubble-enabled", false, "Enable Hubble observability")
+	kubeResetCmd.Flags().BoolVar(&resetFlagValues.CiliumHubbleRelayEnabled, "cilium-hubble-relay-enabled", false, "Enable Hubble Relay")
+	kubeResetCmd.Flags().BoolVar(&resetFlagValues.CiliumHubbleUIEnabled, "cilium-hubble-ui-enabled", false, "Enable Hubble UI")
+	kubeResetCmd.Flags().BoolVar(&resetFlagValues.CiliumClusterMeshEnabled, "cilium-cluster-mesh-enabled", false, "Enable Cilium ClusterMesh")
+	kubeResetCmd.Flags().StringVar(&resetFlagValues.CiliumClusterMeshServiceType, "cilium-cluster-mesh-apiserver-service-type", "", "ClusterMesh API server service type")
+	kubeResetCmd.Flags().Uint16Var(&resetFlagValues.CiliumClusterMeshNodePort, "cilium-cluster-mesh-apiserver-node-port", 0, "ClusterMesh API server node port")
+
+	// Hubble UI frontend resources
+	kubeResetCmd.Flags().StringVar(&resetFlagValues.FrontendResourcesLimitsCPU, "cilium-hubble-ui-frontend-limits-cpu", "", "Hubble UI frontend CPU limit (e.g. '500m')")
+	kubeResetCmd.Flags().StringVar(&resetFlagValues.FrontendResourcesLimitsMemory, "cilium-hubble-ui-frontend-limits-memory", "", "Hubble UI frontend memory limit (e.g. '256Mi')")
+	kubeResetCmd.Flags().StringVar(&resetFlagValues.FrontendResourcesRequestsCPU, "cilium-hubble-ui-frontend-requests-cpu", "", "Hubble UI frontend CPU request (e.g. '100m')")
+	kubeResetCmd.Flags().StringVar(&resetFlagValues.FrontendResourcesRequestsMemory, "cilium-hubble-ui-frontend-requests-memory", "", "Hubble UI frontend memory request (e.g. '128Mi')")
+
+	// Hubble UI backend resources
+	kubeResetCmd.Flags().StringVar(&resetFlagValues.BackendResourcesLimitsCPU, "cilium-hubble-ui-backend-limits-cpu", "", "Hubble UI backend CPU limit (e.g. '500m')")
+	kubeResetCmd.Flags().StringVar(&resetFlagValues.BackendResourcesLimitsMemory, "cilium-hubble-ui-backend-limits-memory", "", "Hubble UI backend memory limit (e.g. '256Mi')")
+	kubeResetCmd.Flags().StringVar(&resetFlagValues.BackendResourcesRequestsCPU, "cilium-hubble-ui-backend-requests-cpu", "", "Hubble UI backend CPU request (e.g. '100m')")
+	kubeResetCmd.Flags().StringVar(&resetFlagValues.BackendResourcesRequestsMemory, "cilium-hubble-ui-backend-requests-memory", "", "Hubble UI backend memory request (e.g. '128Mi')")
 
 	// Private network configuration
 	kubeResetCmd.Flags().StringVar(&cloud.KubeSpec.PrivateNetworkConfiguration.DefaultVrackGateway, "private-network.default-vrack-gateway", "", "If defined, all egress traffic will be routed towards this IP address, which should belong to the private network")
@@ -447,6 +514,11 @@ There are three ways to define the reset parameters:
 	kubeResetCmd.Flags().StringVar(&cloud.KubeSpec.Customization.KubeProxy.IPVS.TCPFinTimeout, "customization.kube-proxy.ipvs.tcp-fin-timeout", "", "Timeout value used for IPVS TCP sessions after receiving a FIN in RFC3339 duration format (e.g. 'PT60S')")
 	kubeResetCmd.Flags().StringVar(&cloud.KubeSpec.Customization.KubeProxy.IPVS.TCPTimeout, "customization.kube-proxy.ipvs.tcp-timeout", "", "Timeout value used for idle IPVS TCP sessions in RFC3339 duration format (e.g. 'PT60S')")
 	kubeResetCmd.Flags().StringVar(&cloud.KubeSpec.Customization.KubeProxy.IPVS.UDPTimeout, "customization.kube-proxy.ipvs.udp-timeout", "", "Timeout value used for IPVS UDP packets in RFC3339 duration format (e.g. 'PT60S')")
+
+	// Handle optional pointer-backed flags: only assign if explicitly set, otherwise nil-out
+	kubeResetCmd.PreRunE = func(cmd *cobra.Command, args []string) error {
+		return kubePreRunE(cmd, &resetFlagValues)
+	}
 
 	// Common flags for other means to define parameters
 	addInitParameterFileFlag(kubeResetCmd, assets.CloudOpenapiSchema, "/cloud/project/{serviceName}/kube/reset", "post", cloud.CloudKubeResetExample, nil)
@@ -639,4 +711,231 @@ There are three ways to define the parameters:
 	createCmd.MarkFlagsMutuallyExclusive("from-file", "editor")
 
 	return createCmd
+}
+
+// kubeFlagValues holds the local flag variables used by kubePreRunE
+// to resolve fields for IPAllocationPolicy, Cilium, Hubble UI resources, and related options.
+type kubeFlagValues struct {
+	PodsIPv4CIDR     string
+	ServicesIPv4CIDR string
+
+	CiliumClusterID              uint8
+	CiliumHubbleEnabled          bool
+	CiliumHubbleRelayEnabled     bool
+	CiliumHubbleUIEnabled        bool
+	CiliumClusterMeshEnabled     bool
+	CiliumClusterMeshNodePort    uint16
+	CiliumClusterMeshServiceType string
+
+	FrontendResourcesLimitsCPU      string
+	FrontendResourcesLimitsMemory   string
+	FrontendResourcesRequestsCPU    string
+	FrontendResourcesRequestsMemory string
+	BackendResourcesLimitsCPU       string
+	BackendResourcesLimitsMemory    string
+	BackendResourcesRequestsCPU     string
+	BackendResourcesRequestsMemory  string
+}
+
+// kubePreRunE handles optional flags for kube create/reset commands.
+// It validates IPAllocationPolicy co-dependency and resolves Cilium/Hubble flag values
+func kubePreRunE(cmd *cobra.Command, vals *kubeFlagValues) error {
+	// Re-allocate pointer structs to ensure a clean state on every invocation
+	cloud.KubeSpec.IPAllocationPolicy = &cloud.IPAllocationPolicy{}
+	cloud.KubeSpec.Customization.Cilium = &cloud.Cilium{}
+	cloud.KubeSpec.Customization.Cilium.Hubble = &cloud.Hubble{}
+	cloud.KubeSpec.Customization.Cilium.Hubble.Relay = &cloud.HubbleRelay{}
+	cloud.KubeSpec.Customization.Cilium.Hubble.UI = &cloud.HubbleUI{}
+	cloud.KubeSpec.Customization.Cilium.ClusterMesh = &cloud.ClusterMesh{}
+	cloud.KubeSpec.Customization.Cilium.ClusterMesh.APIServer = &cloud.ClusterMeshAPIServer{}
+
+	// IPAllocationPolicy
+	podsCidrChanged := cmd.Flags().Changed("ip-allocation-policy-pods-ipv4-cidr")
+	servicesCidrChanged := cmd.Flags().Changed("ip-allocation-policy-services-ipv4-cidr")
+
+	if podsCidrChanged != servicesCidrChanged {
+		return fmt.Errorf("both --ip-allocation-policy-pods-ipv4-cidr and --ip-allocation-policy-services-ipv4-cidr must be set together")
+	}
+
+	if !podsCidrChanged && !servicesCidrChanged { // if neither is set, nil-out the whole IPAllocationPolicy to avoid sending empty struct
+		cloud.KubeSpec.IPAllocationPolicy = nil
+	} else {
+		cloud.KubeSpec.IPAllocationPolicy.PodsIPv4CIDR = vals.PodsIPv4CIDR
+		cloud.KubeSpec.IPAllocationPolicy.ServicesIPv4CIDR = vals.ServicesIPv4CIDR
+	}
+
+	// Cilium flag variables
+	ciliumClusterIDChanged := cmd.Flags().Changed("cilium-cluster-id")
+	ciliumHubbleEnabledChanged := cmd.Flags().Changed("cilium-hubble-enabled")
+	ciliumHubbleRelayEnabledChanged := cmd.Flags().Changed("cilium-hubble-relay-enabled")
+	ciliumHubbleUIEnabledChanged := cmd.Flags().Changed("cilium-hubble-ui-enabled")
+	ciliumClusterMeshEnabledChanged := cmd.Flags().Changed("cilium-cluster-mesh-enabled")
+	ciliumClusterMeshAPIServerServiceTypeChanged := cmd.Flags().Changed("cilium-cluster-mesh-apiserver-service-type")
+	ciliumClusterMeshAPIServerNodePortChanged := cmd.Flags().Changed("cilium-cluster-mesh-apiserver-node-port")
+
+	// Frontend resource flag variables
+	frontendLimitsCPUChanged := cmd.Flags().Changed("cilium-hubble-ui-frontend-limits-cpu")
+	frontendLimitsMemoryChanged := cmd.Flags().Changed("cilium-hubble-ui-frontend-limits-memory")
+	frontendRequestsCPUChanged := cmd.Flags().Changed("cilium-hubble-ui-frontend-requests-cpu")
+	frontendRequestsMemoryChanged := cmd.Flags().Changed("cilium-hubble-ui-frontend-requests-memory")
+
+	// Backend resource flag variables
+	backendLimitsCPUChanged := cmd.Flags().Changed("cilium-hubble-ui-backend-limits-cpu")
+	backendLimitsMemoryChanged := cmd.Flags().Changed("cilium-hubble-ui-backend-limits-memory")
+	backendRequestsCPUChanged := cmd.Flags().Changed("cilium-hubble-ui-backend-requests-cpu")
+	backendRequestsMemoryChanged := cmd.Flags().Changed("cilium-hubble-ui-backend-requests-memory")
+
+	anyFrontendResourceFlag := frontendLimitsCPUChanged ||
+		frontendLimitsMemoryChanged ||
+		frontendRequestsCPUChanged ||
+		frontendRequestsMemoryChanged
+
+	anyBackendResourceFlag := backendLimitsCPUChanged ||
+		backendLimitsMemoryChanged ||
+		backendRequestsCPUChanged ||
+		backendRequestsMemoryChanged
+
+	allFrontendResourceFlags := frontendLimitsCPUChanged &&
+		frontendLimitsMemoryChanged &&
+		frontendRequestsCPUChanged &&
+		frontendRequestsMemoryChanged
+
+	allBackendResourceFlags := backendLimitsCPUChanged &&
+		backendLimitsMemoryChanged &&
+		backendRequestsCPUChanged &&
+		backendRequestsMemoryChanged
+
+	anyCiliumFlag := ciliumClusterIDChanged ||
+		ciliumHubbleEnabledChanged ||
+		ciliumHubbleRelayEnabledChanged ||
+		ciliumHubbleUIEnabledChanged ||
+		anyFrontendResourceFlag || anyBackendResourceFlag ||
+		ciliumClusterMeshEnabledChanged ||
+		ciliumClusterMeshAPIServerServiceTypeChanged ||
+		ciliumClusterMeshAPIServerNodePortChanged
+
+	if !anyCiliumFlag {
+		cloud.KubeSpec.Customization.Cilium = nil
+		return nil
+	}
+
+	if ciliumClusterIDChanged && !vals.CiliumClusterMeshEnabled {
+		return fmt.Errorf("set --cilium-cluster-mesh-enabled to enable ClusterMesh when setting --cilium-cluster-id")
+	}
+
+	if vals.CiliumClusterMeshEnabled && !ciliumClusterIDChanged {
+		return fmt.Errorf("--cilium-cluster-id must be set when setting any other Cilium ClusterMesh is enabled")
+	}
+
+	if vals.CiliumClusterMeshEnabled && ciliumClusterIDChanged { // If ClusterMesh is enabled and ClusterID is set, assign the value, otherwise nil-out.
+		cloud.KubeSpec.Customization.Cilium.ClusterID = &vals.CiliumClusterID
+	}
+
+	if !ciliumClusterIDChanged { // If ClusterID is not set by the user.
+		cloud.KubeSpec.Customization.Cilium.ClusterID = nil
+	}
+
+	// Hubble
+	anyHubbleFlag := ciliumHubbleEnabledChanged ||
+		ciliumHubbleRelayEnabledChanged ||
+		ciliumHubbleUIEnabledChanged ||
+		anyFrontendResourceFlag || anyBackendResourceFlag
+	if !anyHubbleFlag {
+		cloud.KubeSpec.Customization.Cilium.Hubble = nil
+	} else {
+		if ciliumHubbleEnabledChanged {
+			cloud.KubeSpec.Customization.Cilium.Hubble.Enabled = &vals.CiliumHubbleEnabled
+		} else {
+			cloud.KubeSpec.Customization.Cilium.Hubble.Enabled = nil
+		}
+
+		if ciliumHubbleRelayEnabledChanged {
+			cloud.KubeSpec.Customization.Cilium.Hubble.Relay.Enabled = &vals.CiliumHubbleRelayEnabled
+		} else {
+			cloud.KubeSpec.Customization.Cilium.Hubble.Relay = nil
+		}
+
+		anyHubbleUIFlag := ciliumHubbleUIEnabledChanged || anyFrontendResourceFlag || anyBackendResourceFlag
+
+		// If any Hubble UI flag is set, all of them must be set to avoid partial configuration.
+		if anyHubbleUIFlag && !(ciliumHubbleUIEnabledChanged && allFrontendResourceFlags && allBackendResourceFlags) {
+			return fmt.Errorf("--cilium-hubble-ui-enabled and all frontend/backend resource flags (limits-cpu, limits-memory, requests-cpu, requests-memory) must all be set together")
+		}
+
+		//--cilium-hubble-enabled must be set together with --cilium-hubble-ui-enabled
+		if ciliumHubbleUIEnabledChanged && !ciliumHubbleEnabledChanged {
+			return fmt.Errorf("--cilium-hubble-enabled must be set together with --cilium-hubble-ui-enabled")
+		}
+		if !anyHubbleUIFlag {
+			cloud.KubeSpec.Customization.Cilium.Hubble.UI = nil
+		} else {
+			if ciliumHubbleUIEnabledChanged {
+				cloud.KubeSpec.Customization.Cilium.Hubble.UI.Enabled = &vals.CiliumHubbleUIEnabled
+				cloud.KubeSpec.Customization.Cilium.Hubble.UI.FrontendResources = &v1.ResourceRequirements{
+					Limits: v1.ResourceList{
+						v1.ResourceCPU:    resource.MustParse(vals.FrontendResourcesLimitsCPU),
+						v1.ResourceMemory: resource.MustParse(vals.FrontendResourcesLimitsMemory),
+					},
+					Requests: v1.ResourceList{
+						v1.ResourceCPU:    resource.MustParse(vals.FrontendResourcesRequestsCPU),
+						v1.ResourceMemory: resource.MustParse(vals.FrontendResourcesRequestsMemory),
+					},
+				}
+
+				cloud.KubeSpec.Customization.Cilium.Hubble.UI.BackendResources = &v1.ResourceRequirements{
+					Limits: v1.ResourceList{
+						v1.ResourceCPU:    resource.MustParse(vals.BackendResourcesLimitsCPU),
+						v1.ResourceMemory: resource.MustParse(vals.BackendResourcesLimitsMemory),
+					},
+					Requests: v1.ResourceList{
+						v1.ResourceCPU:    resource.MustParse(vals.BackendResourcesRequestsCPU),
+						v1.ResourceMemory: resource.MustParse(vals.BackendResourcesRequestsMemory),
+					},
+				}
+			}
+		}
+	}
+
+	// ClusterMesh
+	anyClusterMeshFlag :=
+		ciliumClusterMeshEnabledChanged ||
+			ciliumClusterMeshAPIServerServiceTypeChanged ||
+			ciliumClusterMeshAPIServerNodePortChanged
+
+	allClusterMeshAPIServerFlag :=
+		ciliumClusterMeshEnabledChanged &&
+			ciliumClusterMeshAPIServerServiceTypeChanged &&
+			ciliumClusterMeshAPIServerNodePortChanged
+
+	// If ClusterMesh is enabled and any ClusterMesh flag is set, all of them must be set to avoid partial configuration
+	if vals.CiliumClusterMeshEnabled &&
+		anyClusterMeshFlag &&
+		!allClusterMeshAPIServerFlag {
+		return fmt.Errorf("--cilium-cluster-mesh-enabled, --cilium-cluster-mesh-apiserver-service-type, and --cilium-cluster-mesh-apiserver-node-port must all be set together")
+	}
+
+	if ciliumClusterMeshAPIServerServiceTypeChanged {
+		switch vals.CiliumClusterMeshServiceType {
+		case "LoadBalancer", "NodePort", "ClusterIP":
+			// valid
+		default:
+			return fmt.Errorf("--cilium-cluster-mesh-apiserver-service-type must be one of: LoadBalancer, NodePort, ClusterIP")
+		}
+	}
+
+	if !ciliumClusterMeshEnabledChanged {
+		cloud.KubeSpec.Customization.Cilium.ClusterMesh = nil
+	} else {
+		if vals.CiliumClusterMeshEnabled {
+			cloud.KubeSpec.Customization.Cilium.ClusterMesh.Enabled = &vals.CiliumClusterMeshEnabled
+			cloud.KubeSpec.Customization.Cilium.ClusterMesh.APIServer.NodePort = vals.CiliumClusterMeshNodePort
+			cloud.KubeSpec.Customization.Cilium.ClusterMesh.APIServer.ServiceType = vals.CiliumClusterMeshServiceType
+		} else {
+			cloud.KubeSpec.Customization.Cilium.ClusterMesh.Enabled = &vals.CiliumClusterMeshEnabled
+			cloud.KubeSpec.Customization.Cilium.ClusterMesh.APIServer = nil
+		}
+
+	}
+
+	return nil
 }
