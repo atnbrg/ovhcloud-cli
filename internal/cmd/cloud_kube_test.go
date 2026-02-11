@@ -620,6 +620,21 @@ func (ms *MockSuite) TestCloudKubeResetCiliumClusterMeshInvalidServiceType(asser
 	assert.Contains(err.Error(), "--cilium-cluster-mesh-apiserver-service-type must be one of: LoadBalancer, NodePort, ClusterIP")
 }
 
+// TestCloudKubeCustomizationEditCiliumClusterMeshInvalidServiceType tests that editing customization with an invalid ClusterMesh service type results in an error.
+func (ms *MockSuite) TestCloudKubeCustomizationEditCiliumClusterMeshInvalidServiceType(assert, require *td.T) {
+	_, err := cmd.Execute(
+		"cloud", "kube", "customization", "edit", "kube-12345",
+		"--cloud-project", "fakeProjectID",
+		"--cilium-cluster-id=5",
+		"--cilium-cluster-mesh-enabled",
+		"--cilium-cluster-mesh-apiserver-service-type=InvalidType",
+		"--cilium-cluster-mesh-apiserver-node-port=30000",
+	)
+
+	require.CmpError(err)
+	assert.Contains(err.Error(), "--cilium-cluster-mesh-apiserver-service-type must be one of: LoadBalancer, NodePort, ClusterIP")
+}
+
 // TestCloudKubeResetWithPrivateNetworkConfig tests that resetting a kube with private network configuration results in a successful reset.
 func (ms *MockSuite) TestCloudKubeResetWithPrivateNetworkConfig(assert, require *td.T) {
 	httpmock.RegisterMatcherResponder(
