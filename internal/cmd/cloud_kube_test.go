@@ -110,7 +110,7 @@ func (ms *MockSuite) TestCloudKubeCreateCiliumHubbleUIWithoutHubbleEnabled(asser
 	)
 
 	require.CmpError(err)
-	assert.Contains(err.Error(), "--cilium-hubble-enabled must be set together with --cilium-hubble-ui-enabled")
+	assert.Contains(err.Error(), "--cilium-hubble-enabled must be set together with --cilium-hubble-relay-enabled")
 }
 
 // TestCloudKubeCreateCiliumHubbleUIAndHubbleEnabled tests that creating a kube with both Cilium Hubble and Cilium Hubble UI enabled and all required UI resource flags results in a successful creation.
@@ -123,6 +123,9 @@ func (ms *MockSuite) TestCloudKubeCreateCiliumHubbleUIAndHubbleEnabled(assert, r
 				"cilium": {
 					"hubble": {
 						"enabled": true,
+						"relay": {
+     						"enabled": true,
+						},
 						"ui": {
 							"enabled": true,
 							"frontendResources": {
@@ -169,6 +172,7 @@ func (ms *MockSuite) TestCloudKubeCreateCiliumHubbleUIAndHubbleEnabled(assert, r
 		"--cilium-hubble-ui-backend-limits-memory=200m",
 		"--cilium-hubble-ui-backend-requests-cpu=10",
 		"--cilium-hubble-ui-backend-requests-memory=200m",
+		"--cilium-hubble-relay-enabled",
 	)
 
 	require.CmpNoError(err)
@@ -419,4 +423,297 @@ func (ms *MockSuite) TestCloudKubeCreateWithBothIPAllocationPolicyCIDRs(assert, 
 
 	require.CmpNoError(err)
 	assert.Contains(out, "created successfully")
+}
+
+//
+// RESET CLUSTER TESTS
+//
+
+// TestCloudKubeResetCmd tests that resetting a kube with basic flags results in a successful reset.
+func (ms *MockSuite) TestCloudKubeResetCmd(assert, require *td.T) {
+	httpmock.RegisterMatcherResponder(
+		http.MethodPost,
+		"https://eu.api.ovh.com/v1/cloud/project/fakeProjectID/kube/kube-12345/reset",
+		tdhttpmock.JSONBody(td.SuperJSONOf(`{
+			"version": "1.32",
+			"workerNodesPolicy": "reinstall"
+		}`)),
+		httpmock.NewStringResponder(200, `{}`).Once())
+
+	out, err := cmd.Execute(
+		"cloud", "kube", "reset", "kube-12345",
+		"--cloud-project", "fakeProjectID",
+		"--version", "1.32",
+		"--worker-nodes-policy", "reinstall",
+	)
+
+	require.CmpNoError(err)
+	assert.Contains(out, "reset")
+}
+
+// TestCloudKubeResetCmdMissingClusterID tests that resetting a kube without a cluster_id argument results in an error.
+func (ms *MockSuite) TestCloudKubeResetCmdMissingClusterID(assert, require *td.T) {
+	_, err := cmd.Execute(
+		"cloud", "kube", "reset",
+		"--cloud-project", "fakeProjectID",
+	)
+
+	require.CmpError(err)
+}
+
+// TestCloudKubeResetWithOnlyPodsIPv4CIDR tests that resetting a kube with only --ip-allocation-policy-pods-ipv4-cidr results in an error since both CIDR flags must be set together.
+func (ms *MockSuite) TestCloudKubeResetWithOnlyPodsIPv4CIDR(assert, require *td.T) {
+	_, err := cmd.Execute(
+		"cloud", "kube", "reset", "kube-12345",
+		"--cloud-project", "fakeProjectID",
+		"--ip-allocation-policy-pods-ipv4-cidr=10.0.0.0/16",
+	)
+
+	require.CmpError(err)
+	assert.Contains(err.Error(), "both --ip-allocation-policy-pods-ipv4-cidr and --ip-allocation-policy-services-ipv4-cidr must be set together")
+}
+
+// TestCloudKubeResetWithOnlyServicesIPv4CIDR tests that resetting a kube with only --ip-allocation-policy-services-ipv4-cidr results in an error since both CIDR flags must be set together.
+func (ms *MockSuite) TestCloudKubeResetWithOnlyServicesIPv4CIDR(assert, require *td.T) {
+	_, err := cmd.Execute(
+		"cloud", "kube", "reset", "kube-12345",
+		"--cloud-project", "fakeProjectID",
+		"--ip-allocation-policy-services-ipv4-cidr=10.1.0.0/16",
+	)
+
+	require.CmpError(err)
+	assert.Contains(err.Error(), "both --ip-allocation-policy-pods-ipv4-cidr and --ip-allocation-policy-services-ipv4-cidr must be set together")
+}
+
+// TestCloudKubeResetWithBothIPAllocationPolicyCIDRs tests that resetting a kube with both CIDR flags set results in a successful reset.
+func (ms *MockSuite) TestCloudKubeResetWithBothIPAllocationPolicyCIDRs(assert, require *td.T) {
+	httpmock.RegisterMatcherResponder(
+		http.MethodPost,
+		"https://eu.api.ovh.com/v1/cloud/project/fakeProjectID/kube/kube-12345/reset",
+		tdhttpmock.JSONBody(td.SuperJSONOf(`{
+			"ipAllocationPolicy": {
+				"podsIpv4Cidr": "10.0.0.0/16",
+				"servicesIpv4Cidr": "10.1.0.0/16"
+			}
+		}`)),
+		httpmock.NewStringResponder(200, `{}`).Once())
+
+	out, err := cmd.Execute(
+		"cloud", "kube", "reset", "kube-12345",
+		"--cloud-project", "fakeProjectID",
+		"--ip-allocation-policy-pods-ipv4-cidr=10.0.0.0/16",
+		"--ip-allocation-policy-services-ipv4-cidr=10.1.0.0/16",
+	)
+
+	require.CmpNoError(err)
+	assert.Contains(out, "reset")
+}
+
+// TestCloudKubeResetCiliumHubbleEnabled tests that resetting a kube with Cilium Hubble enabled results in a successful reset.
+func (ms *MockSuite) TestCloudKubeResetCiliumHubbleEnabled(assert, require *td.T) {
+	httpmock.RegisterMatcherResponder(
+		http.MethodPost,
+		"https://eu.api.ovh.com/v1/cloud/project/fakeProjectID/kube/kube-12345/reset",
+		tdhttpmock.JSONBody(td.SuperJSONOf(`{
+			"customization": {
+				"cilium": {
+					"hubble": {
+						"enabled": true
+					}
+				}
+			}
+		}`)),
+		httpmock.NewStringResponder(200, `{}`).Once())
+
+	out, err := cmd.Execute(
+		"cloud", "kube", "reset", "kube-12345",
+		"--cloud-project", "fakeProjectID",
+		"--cilium-hubble-enabled",
+	)
+
+	require.CmpNoError(err)
+	assert.Contains(out, "reset")
+}
+
+// TestCloudKubeResetCiliumHubbleUIEnabledOnly tests that resetting a kube with only Cilium Hubble UI enabled results in an error since all frontend/backend resource flags must be set as well.
+func (ms *MockSuite) TestCloudKubeResetCiliumHubbleUIEnabledOnly(assert, require *td.T) {
+	_, err := cmd.Execute(
+		"cloud", "kube", "reset", "kube-12345",
+		"--cloud-project", "fakeProjectID",
+		"--cilium-hubble-ui-enabled",
+	)
+
+	require.CmpError(err)
+	assert.Contains(err.Error(), "--cilium-hubble-ui-enabled and all frontend/backend resource flags (limits-cpu, limits-memory, requests-cpu, requests-memory) must all be set together")
+}
+
+// TestCloudKubeResetCiliumClusterMeshWithAllOptions tests that resetting a kube with all ClusterMesh options set results in a successful reset.
+func (ms *MockSuite) TestCloudKubeResetCiliumClusterMeshWithAllOptions(assert, require *td.T) {
+	httpmock.RegisterMatcherResponder(
+		http.MethodPost,
+		"https://eu.api.ovh.com/v1/cloud/project/fakeProjectID/kube/kube-12345/reset",
+		tdhttpmock.JSONBody(td.SuperJSONOf(`{
+			"customization": {
+				"cilium": {
+					"clusterId": 42,
+					"clusterMesh": {
+						"enabled": true,
+						"apiserver": {
+							"serviceType": "LoadBalancer",
+							"nodePort": 31000
+						}
+					}
+				}
+			}
+		}`)),
+		httpmock.NewStringResponder(200, `{}`).Once())
+
+	out, err := cmd.Execute(
+		"cloud", "kube", "reset", "kube-12345",
+		"--cloud-project", "fakeProjectID",
+		"--cilium-cluster-id=42",
+		"--cilium-cluster-mesh-enabled",
+		"--cilium-cluster-mesh-apiserver-service-type=LoadBalancer",
+		"--cilium-cluster-mesh-apiserver-node-port=31000",
+	)
+
+	require.CmpNoError(err)
+	assert.Contains(out, "reset")
+}
+
+// TestCloudKubeResetCiliumClusterMeshEnabledWithoutClusterID tests that resetting a kube with ClusterMesh enabled but without a Cluster ID results in an error.
+func (ms *MockSuite) TestCloudKubeResetCiliumClusterMeshEnabledWithoutClusterID(assert, require *td.T) {
+	_, err := cmd.Execute(
+		"cloud", "kube", "reset", "kube-12345",
+		"--cloud-project", "fakeProjectID",
+		"--cilium-cluster-mesh-enabled",
+	)
+
+	require.CmpError(err)
+	assert.Contains(err.Error(), "--cilium-cluster-id must be set when setting any other Cilium ClusterMesh is enabled")
+}
+
+// TestCloudKubeResetCiliumClusterIDWithoutClusterMesh tests that resetting a kube with only Cilium Cluster ID set and without ClusterMesh enabled results in an error.
+func (ms *MockSuite) TestCloudKubeResetCiliumClusterIDWithoutClusterMesh(assert, require *td.T) {
+	_, err := cmd.Execute(
+		"cloud", "kube", "reset", "kube-12345",
+		"--cloud-project", "fakeProjectID",
+		"--cilium-cluster-id=5",
+	)
+
+	require.CmpError(err)
+	assert.Contains(err.Error(), "set --cilium-cluster-mesh-enabled to enable ClusterMesh when setting --cilium-cluster-id")
+}
+
+// TestCloudKubeResetCiliumClusterMeshInvalidServiceType tests that resetting a kube with an invalid ClusterMesh service type results in an error.
+func (ms *MockSuite) TestCloudKubeResetCiliumClusterMeshInvalidServiceType(assert, require *td.T) {
+	_, err := cmd.Execute(
+		"cloud", "kube", "reset", "kube-12345",
+		"--cloud-project", "fakeProjectID",
+		"--cilium-cluster-id=5",
+		"--cilium-cluster-mesh-enabled",
+		"--cilium-cluster-mesh-apiserver-service-type=BadType",
+		"--cilium-cluster-mesh-apiserver-node-port=30000",
+	)
+
+	require.CmpError(err)
+	assert.Contains(err.Error(), "--cilium-cluster-mesh-apiserver-service-type must be one of: LoadBalancer, NodePort, ClusterIP")
+}
+
+// TestCloudKubeResetWithPrivateNetworkConfig tests that resetting a kube with private network configuration results in a successful reset.
+func (ms *MockSuite) TestCloudKubeResetWithPrivateNetworkConfig(assert, require *td.T) {
+	httpmock.RegisterMatcherResponder(
+		http.MethodPost,
+		"https://eu.api.ovh.com/v1/cloud/project/fakeProjectID/kube/kube-12345/reset",
+		tdhttpmock.JSONBody(td.SuperJSONOf(`{
+			"privateNetworkConfiguration": {
+				"defaultVrackGateway": "10.0.0.1",
+				"privateNetworkRoutingAsDefault": true
+			}
+		}`)),
+		httpmock.NewStringResponder(200, `{}`).Once())
+
+	out, err := cmd.Execute(
+		"cloud", "kube", "reset", "kube-12345",
+		"--cloud-project", "fakeProjectID",
+		"--private-network.default-vrack-gateway", "10.0.0.1",
+		"--private-network.routing-as-default",
+	)
+
+	require.CmpNoError(err)
+	assert.Contains(out, "reset")
+}
+
+// TestCloudKubeResetCiliumHubbleRelayWithoutHubble tests that resetting a kube with Hubble Relay enabled but without Hubble enabled results in an error.
+func (ms *MockSuite) TestCloudKubeResetCiliumHubbleRelayWithoutHubble(assert, require *td.T) {
+	_, err := cmd.Execute(
+		"cloud", "kube", "reset", "kube-12345",
+		"--cloud-project", "fakeProjectID",
+		"--cilium-hubble-relay-enabled",
+	)
+
+	require.CmpError(err)
+	assert.Contains(err.Error(), "--cilium-hubble-enabled must be set together with --cilium-hubble-relay-enabled")
+}
+
+// TestCloudKubeResetCiliumHubbleUIAndHubbleEnabled tests that resetting a kube with Hubble, Relay, UI and all resource flags results in a successful reset.
+func (ms *MockSuite) TestCloudKubeResetCiliumHubbleUIAndHubbleEnabled(assert, require *td.T) {
+	httpmock.RegisterMatcherResponder(
+		http.MethodPost,
+		"https://eu.api.ovh.com/v1/cloud/project/fakeProjectID/kube/kube-12345/reset",
+		tdhttpmock.JSONBody(td.SuperJSONOf(`{
+			"customization": {
+				"cilium": {
+					"hubble": {
+						"enabled": true,
+						"relay": {
+							"enabled": true
+						},
+						"ui": {
+							"enabled": true,
+							"frontendResources": {
+								"limits": {
+									"cpu": "500m",
+									"memory": "256Mi"
+								},
+								"requests": {
+									"cpu": "100m",
+									"memory": "128Mi"
+								}
+							},
+							"backendResources": {
+								"limits": {
+									"cpu": "500m",
+									"memory": "256Mi"
+								},
+								"requests": {
+									"cpu": "100m",
+									"memory": "128Mi"
+								}
+							}
+						}
+					}
+				}
+			}
+		}`)),
+		httpmock.NewStringResponder(200, `{}`).Once())
+
+	out, err := cmd.Execute(
+		"cloud", "kube", "reset", "kube-12345",
+		"--cloud-project", "fakeProjectID",
+		"--cilium-hubble-enabled",
+		"--cilium-hubble-relay-enabled",
+		"--cilium-hubble-ui-enabled",
+		"--cilium-hubble-ui-frontend-limits-cpu=500m",
+		"--cilium-hubble-ui-frontend-limits-memory=256Mi",
+		"--cilium-hubble-ui-frontend-requests-cpu=100m",
+		"--cilium-hubble-ui-frontend-requests-memory=128Mi",
+		"--cilium-hubble-ui-backend-limits-cpu=500m",
+		"--cilium-hubble-ui-backend-limits-memory=256Mi",
+		"--cilium-hubble-ui-backend-requests-cpu=100m",
+		"--cilium-hubble-ui-backend-requests-memory=128Mi",
+	)
+
+	require.CmpNoError(err)
+	assert.Contains(out, "reset")
 }
