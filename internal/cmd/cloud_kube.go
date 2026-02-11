@@ -849,6 +849,10 @@ func kubePreRunE(cmd *cobra.Command, vals *kubeFlagValues) error {
 			cloud.KubeSpec.Customization.Cilium.Hubble.Enabled = nil
 		}
 
+		if vals.CiliumHubbleRelayEnabled && !vals.CiliumHubbleEnabled {
+			return fmt.Errorf("--cilium-hubble-enabled must be set together with --cilium-hubble-relay-enabled")
+		}
+
 		if ciliumHubbleRelayEnabledChanged {
 			cloud.KubeSpec.Customization.Cilium.Hubble.Relay.Enabled = &vals.CiliumHubbleRelayEnabled
 		} else {

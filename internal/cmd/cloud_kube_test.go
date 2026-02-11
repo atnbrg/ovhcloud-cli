@@ -175,6 +175,19 @@ func (ms *MockSuite) TestCloudKubeCreateCiliumHubbleUIAndHubbleEnabled(assert, r
 	assert.Contains(out, "created successfully")
 }
 
+// TestCloudKubeCreateCiliumHubbleRelayEnabledWithoutHubbleEnabled tests that creating a kube with --cilium-hubble-relay-enabled but without --cilium-hubble-enabled results in an error since the relay flag requires the hubble flag.
+func (ms *MockSuite) TestCloudKubeCreateCiliumHubbleRelayEnabledWithoutHubbleEnabled(assert, require *td.T) {
+	_, err := cmd.Execute(
+		"cloud", "kube", "create",
+		"--cloud-project", "fakeProjectID",
+		"--region", "GRA999",
+		"--cilium-hubble-relay-enabled",
+	)
+
+	require.CmpError(err)
+	assert.Contains(err.Error(), "--cilium-hubble-enabled must be set together with --cilium-hubble-relay-enabled")
+}
+
 // TestCloudKubeCreateCiliumHubbleRelayEnabled tests that creating a kube with Cilium Hubble and Hubble Relay enabled results in a successful creation.
 func (ms *MockSuite) TestCloudKubeCreateCiliumHubbleRelayEnabled(assert, require *td.T) {
 	httpmock.RegisterMatcherResponder(
@@ -320,6 +333,36 @@ func (ms *MockSuite) TestCloudKubeCreateCiliumClusterIDOutOfRange(assert, requir
 	)
 
 	require.CmpError(err)
+}
+
+// TestCloudKubeCreateCiliumClusterMeshDisabled tests that creating a kube with --cilium-cluster-mesh-enabled=false results in a successful creation with clusterMesh disabled and no apiserver configuration.
+func (ms *MockSuite) TestCloudKubeCreateCiliumClusterMeshDisabled(assert, require *td.T) {
+	httpmock.RegisterMatcherResponder(
+		http.MethodPost,
+		"https://eu.api.ovh.com/v1/cloud/project/fakeProjectID/kube",
+		tdhttpmock.JSONBody(td.SuperJSONOf(`{
+			"customization": {
+				"cilium": {
+					"clusterMesh": {
+						"enabled": false
+					}
+				}
+			}
+		}`)),
+		httpmock.NewStringResponder(200, `{
+			"id": "kube-99999",
+			"name": "test-clustermesh-disabled-kube"
+		}`).Once())
+
+	out, err := cmd.Execute(
+		"cloud", "kube", "create",
+		"--cloud-project", "fakeProjectID",
+		"--region", "GRA999",
+		"--cilium-cluster-mesh-enabled=false",
+	)
+
+	require.CmpNoError(err)
+	assert.Contains(out, "created successfully")
 }
 
 // CREATION CLUSTER WITH IP ALLOCATION POLICY TESTS
