@@ -620,21 +620,6 @@ func (ms *MockSuite) TestCloudKubeResetCiliumClusterMeshInvalidServiceType(asser
 	assert.Contains(err.Error(), "--cilium-cluster-mesh-apiserver-service-type must be one of: LoadBalancer, NodePort, ClusterIP")
 }
 
-// TestCloudKubeCustomizationEditCiliumClusterMeshInvalidServiceType tests that editing customization with an invalid ClusterMesh service type results in an error.
-func (ms *MockSuite) TestCloudKubeCustomizationEditCiliumClusterMeshInvalidServiceType(assert, require *td.T) {
-	_, err := cmd.Execute(
-		"cloud", "kube", "customization", "edit", "kube-12345",
-		"--cloud-project", "fakeProjectID",
-		"--cilium-cluster-id=5",
-		"--cilium-cluster-mesh-enabled",
-		"--cilium-cluster-mesh-apiserver-service-type=InvalidType",
-		"--cilium-cluster-mesh-apiserver-node-port=30000",
-	)
-
-	require.CmpError(err)
-	assert.Contains(err.Error(), "--cilium-cluster-mesh-apiserver-service-type must be one of: LoadBalancer, NodePort, ClusterIP")
-}
-
 // TestCloudKubeResetWithPrivateNetworkConfig tests that resetting a kube with private network configuration results in a successful reset.
 func (ms *MockSuite) TestCloudKubeResetWithPrivateNetworkConfig(assert, require *td.T) {
 	httpmock.RegisterMatcherResponder(
@@ -731,4 +716,184 @@ func (ms *MockSuite) TestCloudKubeResetCiliumHubbleUIAndHubbleEnabled(assert, re
 
 	require.CmpNoError(err)
 	assert.Contains(out, "reset")
+}
+
+//
+// CUSTOMIZATION SUBCOMMAND TESTS
+//
+
+// TestCloudKubeCustomizationGetCmd tests that getting a cluster customization returns the expected output.
+func (ms *MockSuite) TestCloudKubeCustomizationGetCmd(assert, require *td.T) {
+	httpmock.RegisterResponder("GET", "https://eu.api.ovh.com/v1/cloud/project/fakeProjectID/kube/kube-12345/customization",
+		httpmock.NewStringResponder(200, `{
+			"apiServer": {
+				"admissionPlugins": {
+					"enabled": ["NodeRestriction"],
+					"disabled": ["AlwaysPullImages"]
+				}
+			},
+			"kubeProxy": {
+				"iptables": {
+					"minSyncPeriod": "PT30S",
+					"syncPeriod": "PT60S"
+				},
+				"ipvs": {
+					"minSyncPeriod": "PT30S",
+					"syncPeriod": "PT60S",
+					"scheduler": "rr",
+					"tcpFinTimeout": "PT60S",
+					"tcpTimeout": "PT120S",
+					"udpTimeout": "PT60S"
+				}
+			}
+		}`).Once())
+
+	out, err := cmd.Execute(
+		"cloud", "kube", "customization", "get", "kube-12345",
+		"--cloud-project", "fakeProjectID",
+	)
+
+	require.CmpNoError(err)
+	assert.Contains(out, "NodeRestriction")
+	assert.Contains(out, "AlwaysPullImages")
+}
+
+// TestCloudKubeCustomizationGetCmdMissingClusterID tests that getting a customization without a cluster_id argument results in an error.
+func (ms *MockSuite) TestCloudKubeCustomizationGetCmdMissingClusterID(assert, require *td.T) {
+	_, err := cmd.Execute(
+		"cloud", "kube", "customization", "get",
+		"--cloud-project", "fakeProjectID",
+	)
+
+	require.CmpError(err)
+}
+
+// TestCloudKubeCustomizationEditCmdMissingClusterID tests that editing a customization without a cluster_id argument results in an error.
+func (ms *MockSuite) TestCloudKubeCustomizationEditCmdMissingClusterID(assert, require *td.T) {
+	_, err := cmd.Execute(
+		"cloud", "kube", "customization", "edit",
+		"--cloud-project", "fakeProjectID",
+	)
+
+	require.CmpError(err)
+}
+
+// TestCloudKubeCustomizationEditCiliumHubbleEnabled tests that editing customization with Cilium Hubble enabled succeeds.
+func (ms *MockSuite) TestCloudKubeCustomizationEditCiliumHubbleEnabled(assert, require *td.T) {
+	httpmock.RegisterResponder("GET", "https://eu.api.ovh.com/v1/cloud/project/fakeProjectID/kube/kube-12345/customization",
+		httpmock.NewStringResponder(200, `{
+			"apiServer": {"admissionPlugins": {"enabled": [], "disabled": []}},
+			"kubeProxy": {"iptables": {}, "ipvs": {}}
+		}`).Once())
+
+	httpmock.RegisterResponder(http.MethodPut,
+		"https://eu.api.ovh.com/v1/cloud/project/fakeProjectID/kube/kube-12345/customization",
+		httpmock.NewStringResponder(200, `{}`).Once())
+
+	out, err := cmd.Execute(
+		"cloud", "kube", "customization", "edit", "kube-12345",
+		"--cloud-project", "fakeProjectID",
+		"--cilium-hubble-enabled",
+	)
+
+	require.CmpNoError(err)
+	assert.Contains(out, "updated successfully")
+}
+
+// TestCloudKubeCustomizationEditCiliumHubbleUIEnabledOnly tests that editing customization with only Hubble UI enabled results in an error since all resource flags must be set.
+func (ms *MockSuite) TestCloudKubeCustomizationEditCiliumHubbleUIEnabledOnly(assert, require *td.T) {
+	_, err := cmd.Execute(
+		"cloud", "kube", "customization", "edit", "kube-12345",
+		"--cloud-project", "fakeProjectID",
+		"--cilium-hubble-ui-enabled",
+	)
+
+	require.CmpError(err)
+	assert.Contains(err.Error(), "--cilium-hubble-ui-enabled and all frontend/backend resource flags (limits-cpu, limits-memory, requests-cpu, requests-memory) must all be set together")
+}
+
+// TestCloudKubeCustomizationEditCiliumHubbleRelayWithoutHubble tests that editing customization with Hubble Relay enabled but without Hubble enabled results in an error.
+func (ms *MockSuite) TestCloudKubeCustomizationEditCiliumHubbleRelayWithoutHubble(assert, require *td.T) {
+	_, err := cmd.Execute(
+		"cloud", "kube", "customization", "edit", "kube-12345",
+		"--cloud-project", "fakeProjectID",
+		"--cilium-hubble-relay-enabled",
+	)
+
+	require.CmpError(err)
+	assert.Contains(err.Error(), "--cilium-hubble-enabled must be set together with --cilium-hubble-relay-enabled")
+}
+
+// TestCloudKubeCustomizationEditCiliumClusterMeshEnabledWithoutClusterID tests that editing customization with ClusterMesh enabled but without a Cluster ID results in an error.
+func (ms *MockSuite) TestCloudKubeCustomizationEditCiliumClusterMeshEnabledWithoutClusterID(assert, require *td.T) {
+	_, err := cmd.Execute(
+		"cloud", "kube", "customization", "edit", "kube-12345",
+		"--cloud-project", "fakeProjectID",
+		"--cilium-cluster-mesh-enabled",
+	)
+
+	require.CmpError(err)
+	assert.Contains(err.Error(), "--cilium-cluster-id must be set when setting any other Cilium ClusterMesh is enabled")
+}
+
+// TestCloudKubeCustomizationEditCiliumClusterIDWithoutClusterMesh tests that editing customization with only Cilium Cluster ID set results in an error.
+func (ms *MockSuite) TestCloudKubeCustomizationEditCiliumClusterIDWithoutClusterMesh(assert, require *td.T) {
+	_, err := cmd.Execute(
+		"cloud", "kube", "customization", "edit", "kube-12345",
+		"--cloud-project", "fakeProjectID",
+		"--cilium-cluster-id=5",
+	)
+
+	require.CmpError(err)
+	assert.Contains(err.Error(), "set --cilium-cluster-mesh-enabled to enable ClusterMesh when setting --cilium-cluster-id")
+}
+
+// TestCloudKubeCustomizationEditCiliumClusterMeshInvalidServiceType tests that editing customization with an invalid ClusterMesh service type results in an error.
+func (ms *MockSuite) TestCloudKubeCustomizationEditCiliumClusterMeshInvalidServiceType(assert, require *td.T) {
+	_, err := cmd.Execute(
+		"cloud", "kube", "customization", "edit", "kube-12345",
+		"--cloud-project", "fakeProjectID",
+		"--cilium-cluster-id=5",
+		"--cilium-cluster-mesh-enabled",
+		"--cilium-cluster-mesh-apiserver-service-type=InvalidType",
+		"--cilium-cluster-mesh-apiserver-node-port=30000",
+	)
+
+	require.CmpError(err)
+	assert.Contains(err.Error(), "--cilium-cluster-mesh-apiserver-service-type must be one of: LoadBalancer, NodePort, ClusterIP")
+}
+
+// TestCloudKubeCustomizationEditCiliumClusterMeshPartialFlags tests that editing customization with partial ClusterMesh flags results in an error.
+func (ms *MockSuite) TestCloudKubeCustomizationEditCiliumClusterMeshPartialFlags(assert, require *td.T) {
+	_, err := cmd.Execute(
+		"cloud", "kube", "customization", "edit", "kube-12345",
+		"--cloud-project", "fakeProjectID",
+		"--cilium-cluster-id=5",
+		"--cilium-cluster-mesh-enabled",
+	)
+
+	require.CmpError(err)
+	assert.Contains(err.Error(), "--cilium-cluster-mesh-enabled, --cilium-cluster-mesh-apiserver-service-type, and --cilium-cluster-mesh-apiserver-node-port must all be set together")
+}
+
+// TestCloudKubeCustomizationEditCiliumClusterMeshDisabled tests that editing customization with ClusterMesh explicitly disabled succeeds.
+func (ms *MockSuite) TestCloudKubeCustomizationEditCiliumClusterMeshDisabled(assert, require *td.T) {
+	httpmock.RegisterResponder("GET", "https://eu.api.ovh.com/v1/cloud/project/fakeProjectID/kube/kube-12345/customization",
+		httpmock.NewStringResponder(200, `{
+			"apiServer": {"admissionPlugins": {"enabled": [], "disabled": []}},
+			"kubeProxy": {"iptables": {}, "ipvs": {}}
+		}`).Once())
+
+	httpmock.RegisterResponder(http.MethodPut,
+		"https://eu.api.ovh.com/v1/cloud/project/fakeProjectID/kube/kube-12345/customization",
+		httpmock.NewStringResponder(200, `{}`).Once())
+
+	out, err := cmd.Execute(
+		"cloud", "kube", "customization", "edit", "kube-12345",
+		"--cloud-project", "fakeProjectID",
+		"--cilium-cluster-mesh-enabled=false",
+	)
+
+	require.CmpNoError(err)
+	assert.Contains(out, "updated successfully")
 }
