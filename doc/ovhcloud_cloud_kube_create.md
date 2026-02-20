@@ -53,7 +53,7 @@ ovhcloud cloud kube create [flags]
       --cilium-cluster-mesh-apiserver-node-port uint16                ClusterMesh API server node port
       --cilium-cluster-mesh-apiserver-service-type string             ClusterMesh API server service type
       --cilium-cluster-mesh-enabled                                   Enable Cilium ClusterMesh
-      --cilium-hubble-enabled                                         Enable Hubble observability
+      --cilium-hubble-enabled                                         Enable Hubble
       --cilium-hubble-relay-enabled                                   Enable Hubble Relay
       --cilium-hubble-ui-backend-limits-cpu string                    Hubble UI backend CPU limit (e.g. '500m')
       --cilium-hubble-ui-backend-limits-memory string                 Hubble UI backend memory limit (e.g. '256Mi')

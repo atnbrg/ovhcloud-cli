@@ -413,7 +413,7 @@ There are three ways to define the creation parameters:
 
 	// Customization: Cilium configuration
 	kubeCreateCmd.Flags().Uint8Var(&createFlagValues.CiliumClusterID, "cilium-cluster-id", 1, "Cilium cluster ID (1 to 255)")
-	kubeCreateCmd.Flags().BoolVar(&createFlagValues.CiliumHubbleEnabled, "cilium-hubble-enabled", false, "Enable Hubble observability")
+	kubeCreateCmd.Flags().BoolVar(&createFlagValues.CiliumHubbleEnabled, "cilium-hubble-enabled", false, "Enable Hubble")
 	kubeCreateCmd.Flags().BoolVar(&createFlagValues.CiliumHubbleRelayEnabled, "cilium-hubble-relay-enabled", false, "Enable Hubble Relay")
 	kubeCreateCmd.Flags().BoolVar(&createFlagValues.CiliumHubbleUIEnabled, "cilium-hubble-ui-enabled", false, "Enable Hubble UI")
 	kubeCreateCmd.Flags().BoolVar(&createFlagValues.CiliumClusterMeshEnabled, "cilium-cluster-mesh-enabled", false, "Enable Cilium ClusterMesh")
